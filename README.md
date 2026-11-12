@@ -1,4 +1,4 @@
-# 校园网自动登录（Windows）
+# 金科校园网自动登录（Windows）
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 ![python](https://img.shields.io/badge/python-3.10%2B-3776AB)
@@ -6,7 +6,10 @@
 
 开机自动连上校园网并完成 Portal 认证；**登录之后继续盯着，掉线自动静默重连**。
 
-只针对本校（JIT-Stu / `10.50.0.10`）写死，**你唯一要填的是学号、密码和运营商**。
+> **适用范围**：本版本仅用于**金陵科技学院（金科）**校园网连接（`JIT-Stu` / `10.50.0.10`），
+> 暂不支持其他学校使用，后续会做相关适配更新。
+
+WiFi 名和门户地址已按金科写死，**你唯一要填的是学号、密码和运营商**。
 不用装任何浏览器驱动，不碰你日常在用的浏览器，密码默认加密保存。
 
 ---
@@ -134,8 +137,8 @@ run.bat --config 路径            使用指定配置文件
 
 ```jsonc
 {
-  "wifi": { "ssid": "JIT-Stu" },              // 本校固定
-  "portal": { "url": "http://10.50.0.10/" },  // 本校固定
+  "wifi": { "ssid": "JIT-Stu" },              // 金科固定
+  "portal": { "url": "http://10.50.0.10/" },  // 金科固定
   "account": {
     "username": "20260001",                   // ← 改这里
     "isp": "中国电信",                        // ← 改这里（电信/移动/联通/校园网）
@@ -155,7 +158,7 @@ run.bat --config 路径            使用指定配置文件
 
 ### 只改账号就行
 
-这个工具只服务本校：WiFi 名固定 `JIT-Stu`，门户地址固定 `10.50.0.10`，
+这个工具只服务金科：WiFi 名固定 `JIT-Stu`，门户地址固定 `10.50.0.10`，
 登录表单的字段名、提交地址、编码都是**自动识别**的。
 
 所以日常唯一需要动的就是设置窗口里的三样：学号、密码、运营商。
@@ -241,7 +244,7 @@ Windows 的 `netsh wlan show networks` 需要定位权限：设置 → 隐私和
 `install_task.ps1 -NoWatchdog` 重新注册，或者托盘右键「退出保活」+ `Stop-ScheduledTask -TaskName JIT-Campus-KeepAlive`。
 
 **Q：HTTP 重登到底能不能用？**
-在本校历史上验证过。建议先跑一次 `run.bat --verify-http-login`（先在门户点注销）确认；
+在金科校园网上验证过。建议先跑一次 `run.bat --verify-http-login`（先在门户点注销）确认；
 如果不可用，把 `keepalive.relogin.enabled` 改成 `false`，退化成纯心跳保活。
 
 ---
