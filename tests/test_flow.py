@@ -303,7 +303,12 @@ def main() -> int:
         print("\n== 8. 真实 WiFi 读取（只读；环境变量已禁止切网）==")
         from jitauth import wifi as wifi_mod
         current, source = wifi_mod.get_current_ssid()
-        check("能读到当前 WiFi（只读操作）", current is not None, f"source={source}")
+        if current is None:
+            # 没有无线网卡的机器（比如 CI 虚拟机）读不到是正常的，
+            # 只要它能明确说明原因就不算失败
+            print(f"  本机读不到无线接口：{source}")
+        check("读到 SSID，或明确给出读不到的原因",
+              current is not None or bool(str(source).strip()), f"source={source!r}")
         ssids, scan_err = wifi_mod.scan_visible_ssids()
         if scan_err:
             print(f"  扫描不可用：{scan_err}")
