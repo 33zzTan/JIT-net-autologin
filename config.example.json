@@ -1,0 +1,99 @@
+{
+  "_comment": "=== 校园网自动登录 · 示例配置 === 把这个文件复制成 config.json，然后运行 run.bat（会弹设置窗口）。真正需要改的只有 account 里的三项：学号、密码、运营商。",
+
+  "wifi": {
+    "_comment": "ssid=校园网 WiFi 名称（本校固定 JIT-Stu）；require_visible=true 表示扫描不到就等待；wait_for_ssid_seconds=开机后最多等多少秒",
+    "ssid": "JIT-Stu",
+    "connect_timeout": 25,
+    "require_visible": true,
+    "connect_if_scan_unavailable": false,
+    "enable_radio_if_off": true,
+    "enable_wait": 3,
+    "wait_for_ssid_seconds": 120,
+    "wait_poll_seconds": 10
+  },
+
+  "portal": {
+    "_comment": "认证门户地址（本校固定，不需要改）",
+    "url": "http://10.50.0.10/",
+    "timeout": 8,
+    "probe_url": "http://connect.rom.miui.com/generate_204",
+    "probe_timeout": 5,
+    "check_attempts": 4,
+    "check_interval": 3
+  },
+
+  "account": {
+    "_comment": "只需要改这三项：学号/账号、密码、运营商（中国电信 / 中国移动 / 中国联通 / 校园网）。密码推荐用设置向导保存（会加密成 password_enc）；手写明文 password 也能用。",
+    "username": "",
+    "password": "",
+    "isp": ""
+  },
+
+  "browser": {
+    "_comment": "只用程序自己的浏览器窗口。browser=auto/edge/chrome；engine=auto(CDP 直连，不需要驱动)/selenium(需要 vendor/)；profile=dedicated 才安全",
+    "browser": "auto",
+    "mode": "auto",
+    "engine": "auto",
+    "profile": "dedicated",
+    "user_data_dir": "",
+    "open_portal_after_login": true,
+    "keep_open_seconds": 0,
+    "close_after_login": false,
+    "launch_timeout": 25,
+    "page_load_timeout": 25,
+    "script_timeout": 10,
+    "find_timeout": 12
+  },
+
+  "behavior": {
+    "_comment": "主流程：检测 WiFi → 连接 → 看门户是否已登录 → 未登录则填表登录。",
+    "open_portal": true,
+    "auto_login": true,
+    "stop_if_wifi_missing": true,
+    "skip_if_already_online": true,
+    "retry_times": 3,
+    "retry_interval": 8,
+    "probe_required": false,
+    "quiet": false
+  },
+
+  "log": {
+    "_comment": "日志文件保留天数（autologin.log 与 keepalive.log 都按天轮转）",
+    "keep_days": 14
+  },
+
+  "keepalive": {
+    "_comment": "=== 登录之后的保活与断线自动重连 === check_interval=多久探一次（本身就是心跳流量）；fail_threshold=连续几次不通才判定掉线；relogin.enabled=false 就是严格纯心跳模式",
+    "enabled": true,
+    "check_interval": 60,
+    "heartbeat_interval": 240,
+    "probe_timeout": 4,
+    "fail_threshold": 3,
+    "confirm_portal": true,
+    "on_sleep_wake": true,
+    "sleep_jump_threshold": 90,
+    "wifi_reconnect": true,
+    "portal_retry_after": 300,
+    "notify": true,
+    "log_summary_minutes": 30,
+
+    "probes": [
+      { "url": "http://connect.rom.miui.com/generate_204", "expect": "204" },
+      { "url": "http://www.msftconnecttest.com/connecttest.txt", "expect": "Microsoft Connect Test" },
+      { "url": "http://captive.apple.com/hotspot-detect.html", "expect": "Success" }
+    ],
+
+    "relogin": {
+      "_comment": "断线后默认只走纯 HTTP 静默重登（不开窗口）；max_per_hour=每小时最多重登几次；backoff_seconds=失败后的退避序列；fatal_hold=账号密码错误时暂停多久（秒）",
+      "enabled": true,
+      "max_per_hour": 12,
+      "backoff_seconds": [30, 120, 300, 900],
+      "verify_timeout": 25,
+      "flap_window": 600,
+      "flap_threshold": 3,
+      "flap_hold": 1800,
+      "fatal_hold": 21600
+    }
+  }
+}

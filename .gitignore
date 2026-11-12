@@ -1,0 +1,34 @@
+# ---- 本机数据（绝对不能进版本库）----
+config.json
+config.json.*
+!config.example.json
+config.json.bak
+logs/
+browser-profile/
+.cache/
+rel-prof/
+
+# ---- 可选依赖：需要时用 tools/fetch_vendor.py 重建 ----
+vendor/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# ---- 测试运行时生成的临时文件 ----
+tests/_flow_cfg.json
+tests/_browser_flow_cfg.json
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
