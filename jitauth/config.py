@@ -98,6 +98,7 @@ DEFAULTS: dict = {
         ],
         "relogin": {
             "enabled": True,           # false = 只保活不重登（严格纯心跳模式）
+            "engine": "auto",          # auto = 先 HTTP，失败立刻弹浏览器窗口；http / browser 可强制
             "max_per_hour": 12,
             "backoff_seconds": [30, 120, 300, 900],
             "verify_timeout": 25,

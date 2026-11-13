@@ -28,7 +28,7 @@
 可测试性
 --------
 探针、门户判定、登录动作、时钟、休眠全部可以注入，
-`tests/test_keepalive.py` 因此能在**不碰真实网络**的前提下跑完整流程。
+`_probe/test_keepalive.py` 因此能在**不碰真实网络**的前提下跑完整流程。
 """
 from __future__ import annotations
 
@@ -97,6 +97,7 @@ class Settings:
     sleep_jump_threshold: float = 90.0
     wifi_reconnect: bool = True
     relogin_enabled: bool = True
+    relogin_engine: str = "auto"          # auto = 先 HTTP，失败立刻用浏览器窗口
     max_per_hour: int = 12
     backoff_seconds: list[float] = field(default_factory=lambda: [30, 120, 300, 900])
     verify_timeout: float = 25.0
@@ -144,6 +145,7 @@ class Settings:
             sleep_jump_threshold=max(10.0, num(raw, "sleep_jump_threshold", 90)),
             wifi_reconnect=boolean(raw, "wifi_reconnect", True),
             relogin_enabled=boolean(rel, "enabled", True),
+            relogin_engine=_engine_name(rel.get("engine")),
             max_per_hour=max(1, int(num(rel, "max_per_hour", 12))),
             backoff_seconds=backoff,
             verify_timeout=max(5.0, num(rel, "verify_timeout", 25)),
@@ -377,6 +379,7 @@ class KeepAliveEngine:
         probe_fn: Callable[[], ProbeResult] | None = None,
         portal_fn: Callable[[], tuple[str, str]] | None = None,
         login_fn: Callable[[], tuple[bool, str]] | None = None,
+        browser_fn: Callable[[], tuple[bool, str]] | None = None,
         wifi_fn: Callable[[], tuple[bool, str]] | None = None,
         notify_fn: Callable[[str, str, str], None] | None = None,
         now_fn: Callable[[], float] = time.time,
@@ -393,6 +396,7 @@ class KeepAliveEngine:
         self._probe_fn = probe_fn
         self._portal_fn = portal_fn
         self._login_fn = login_fn
+        self._browser_fn = browser_fn
         self._wifi_fn = wifi_fn
         self._notify_fn = notify_fn
         self.now = now_fn
@@ -660,7 +664,10 @@ class KeepAliveEngine:
         self._try_wifi_fix()
 
         self.state = RECOVERING
-        self.logger.info("确认已断线（%s），开始静默重登（纯 HTTP，不开窗口）", portal_why)
+        engine = self.settings.relogin_engine
+        self.logger.info("确认已断线（%s），开始自动重登（%s）", portal_why,
+                         {"http": "纯 HTTP", "browser": "浏览器窗口",
+                          "auto": "先 HTTP，失败立刻用浏览器窗口"}.get(engine, "auto"))
         self._notify("recovering", "warning", "检测到断线", "正在自动重连…", 300)
 
         # 尝试次数一起计入限流，避免"失败不计数"导致把门户刷爆
@@ -668,28 +675,27 @@ class KeepAliveEngine:
         self.relogins_total += 1
 
         started = self.now()
-        try:
-            if self._login_fn is not None:
-                ok, message = self._login_fn()
-            else:
-                ok, message = portal.login_via_http(self.cfg, self.logger)
-        except Exception as exc:  # noqa: BLE001
-            ok, message = False, f"{type(exc).__name__}: {exc}"
+        ok, message = False, "未尝试任何登录方式"
+
+        # 第一级：纯 HTTP（安静、快；门户是传统表单时才有效）
+        if engine in ("http", "auto"):
+            ok, message = self._http_login()
+            self.logger.info("HTTP 重登%s：%s", "成功" if ok else "未成功", message)
+            if not ok and _is_fatal(message):
+                return self._pause_for_fatal(message)
+
+        # 第二级：弹出登录窗口，自动填表 + 点登录（和开机那次同一条路径）
+        if not ok and engine in ("browser", "auto"):
+            self.logger.info("改用浏览器窗口重登（门户登录页是 JS 渲染时，HTTP 提交不了）")
+            ok, message = self._browser_login()
+            self.logger.info("浏览器重登%s：%s", "成功" if ok else "未成功", message)
+            if not ok and _is_fatal(message):
+                return self._pause_for_fatal(message)
 
         if not ok:
-            self.logger.warning("HTTP 重登失败：%s", message)
-            if _is_fatal(message):
-                self.paused_until = self.now() + self.settings.fatal_hold
-                self.paused_reason = f"账号问题：{message}"
-                self.state = PAUSED
-                self.last_error = message
-                self.logger.error("门户提示账号/密码问题（%s），停止自动重登 %.0f 小时，请检查配置",
-                                  message, self.settings.fatal_hold / 3600)
-                self._notify("fatal", "error", "自动登录已暂停",
-                             f"门户提示账号问题：{message}；请检查 config.json", 0)
-                return "fatal"
             self._schedule_backoff()
             self.state = DEGRADED
+            self.last_error = message
             self._notify("relogin_failed", "error", "自动重连失败",
                          f"{message}；约 {self._current_backoff():.0f} 秒后重试", 120)
             return "relogin_failed"
@@ -721,6 +727,57 @@ class KeepAliveEngine:
         self._notify("verify_failed", "warning", "重登后仍未联网",
                      "门户返回成功，但外网仍不通；可能是出口问题，稍后重试", 600)
         return "verify_failed"
+
+    def _http_login(self) -> tuple[bool, str]:
+        """纯 HTTP 表单提交（安静，但只对传统表单页面有效）。"""
+        try:
+            if self._login_fn is not None:
+                return self._login_fn()
+            return portal.login_via_http(self.cfg, self.logger)
+        except Exception as exc:  # noqa: BLE001
+            return False, f"{type(exc).__name__}: {exc}"
+
+    def _browser_login(self) -> tuple[bool, str]:
+        """弹出程序自己的浏览器窗口，自动填表并点登录（同开机那条路径）。
+
+        这就是为什么重登要留第二级：本校门户的登录页是 JS 渲染的，
+        原始 HTML 里没有 ``<form>``，纯 HTTP 提交必然失败。
+        """
+        if self._browser_fn is not None:
+            try:
+                return self._browser_fn()
+            except Exception as exc:  # noqa: BLE001
+                return False, f"浏览器重登出错：{type(exc).__name__}: {exc}"
+
+        from . import browser as browser_mod
+
+        try:
+            ok, message, session = browser_mod.login_via_browser(
+                self.cfg, self.logger, visible=True)
+        except Exception as exc:  # noqa: BLE001
+            return False, f"浏览器重登出错：{type(exc).__name__}: {exc}"
+
+        if session is not None:
+            try:
+                if bool(self.cfg["browser"].get("close_after_login", False)):
+                    session.quit(force=True)
+                else:
+                    # 只断开调试连接，窗口留着让你能看见结果
+                    session.close_connection()
+            except Exception as exc:  # noqa: BLE001
+                self.logger.debug("浏览器会话收尾失败：%s", exc)
+        return ok, message
+
+    def _pause_for_fatal(self, message: str) -> str:
+        self.paused_until = self.now() + self.settings.fatal_hold
+        self.paused_reason = f"账号问题：{message}"
+        self.state = PAUSED
+        self.last_error = message
+        self.logger.error("门户提示账号/密码问题（%s），停止自动重登 %.0f 小时，请检查配置",
+                          message, self.settings.fatal_hold / 3600)
+        self._notify("fatal", "error", "自动登录已暂停",
+                     f"门户提示账号问题：{message}；请检查 config.json", 0)
+        return "fatal"
 
     def _verify(self, budget: float) -> bool:
         deadline = self.now() + budget
@@ -950,6 +1007,12 @@ def _iso(ts: float) -> str:
 def _is_fatal(message: str) -> bool:
     text = (message or "").lower()
     return any(word.lower() in text for word in portal.FATAL_WORDS) or "账号/密码问题" in message
+
+
+def _engine_name(value) -> str:
+    """重登方式：auto（先 HTTP 再用浏览器）/ http / browser。"""
+    name = str(value or "auto").strip().lower()
+    return name if name in ("auto", "http", "browser") else "auto"
 
 
 def read_state(path: str | None = None) -> dict:

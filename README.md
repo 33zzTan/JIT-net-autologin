@@ -4,7 +4,7 @@
 ![python](https://img.shields.io/badge/python-3.10%2B-3776AB)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-开机自动连上校园网并完成 Portal 认证；**登录之后继续盯着，掉线自动静默重连**。
+开机自动连上校园网并完成 Portal 认证；**登录之后继续盯着，掉线自动重连**。
 
 > **适用范围**：本版本仅用于**金陵科技学院（金科）**校园网连接（`JIT-Stu` / `10.50.0.10`），
 > 暂不支持其他学校使用，后续会做相关适配更新。
@@ -28,7 +28,7 @@ WiFi 名和门户地址已按金科写死，**你唯一要填的是学号、密�
 | --- | --- | --- |
 | 开机登录一次（45 秒后） | 开机就要能上网 | 一个浏览器窗口 |
 | 心跳保活（每 60 秒一次探针） | 网关"空闲超时"把你踢掉 | 几乎为零 |
-| 看门狗 + 静默重登 | 会话到期、换 IP、唤醒、WiFi 抖动 | 一个常驻进程（约 30 MB） |
+| 看门狗 + 两级重登 | 会话到期、换 IP、唤醒、WiFi 抖动 | 一个常驻进程（约 30 MB） |
 
 ---
 
@@ -36,7 +36,7 @@ WiFi 名和门户地址已按金科写死，**你唯一要填的是学号、密�
 
 - **只用程序自己的浏览器窗口**：独立的 `browser-profile/`，绝不启动、也绝不复用你日常在用的浏览器
 - **不需要浏览器驱动**：直接用 DevTools 协议（CDP）填表提交，不用联网下载 msedgedriver
-- **默认全静默重连**：掉线后用纯 HTTP 重登，不弹窗、不开浏览器
+- **自动重连**：先试纯 HTTP；不行就弹出自己的浏览器窗口填表登录（金科门户实际走这条）
 - **防误判**：多探针 + 连续失败阈值 + 门户二次确认，三道闸门都过了才重登
 - **防锁号**：每小时最多重登 12 次、失败指数退避、密码错误立即停手 6 小时
 - **防互踢**：连续出现"刚登录就掉"会退避 30 分钟，不参与和手机的拉锯
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File install_task.ps1
 | 任务 | 触发 | 作用 |
 | --- | --- | --- |
 | `JIT-Campus-AutoLogin` | 登录 Windows 后 45 秒 | 连 WiFi → 登录一次 → 退出 |
-| `JIT-Campus-KeepAlive` | 登录 Windows 后 105 秒 | 常驻：每 60 秒巡检，掉线静默重登 |
+| `JIT-Campus-KeepAlive` | 登录 Windows 后 105 秒 | 常驻：每 60 秒巡检，掉线自动重登 |
 
 常用参数：
 
@@ -149,6 +149,7 @@ run.bat --config 路径            使用指定配置文件
     "fail_threshold": 3,                      // 连续几次不通才判定断线
     "relogin": {
       "enabled": true,                        // false = 只保活不重登
+      "engine": "auto",                       // auto=先HTTP失败弹浏览器；http；browser
       "max_per_hour": 12,
       "backoff_seconds": [30, 120, 300, 900]
     }
@@ -187,7 +188,9 @@ run.bat --config 路径            使用指定配置文件
   连续 3 次不通 → 看门户：
       门户说"还在线"  → 只是探针被拦，不重登
       门户打不开      → 可能网关维护/WiFi 断了，先修 WiFi，等 5 分钟
-      门户是登录页    → 确认掉线 → 纯 HTTP 静默重登 → 探针复查
+      门户是登录页    → 确认掉线 → 两级重登 → 探针复查
+                        第 1 级 纯 HTTP 提交（安静、不开窗）
+                        第 2 级 弹出自己的浏览器窗口，自动填表 + 点登录
 ```
 
 失败按 `30s → 2min → 5min → 15min` 退避；一小时最多 12 次；密码错误直接暂停 6 小时。
@@ -243,9 +246,11 @@ Windows 的 `netsh wlan show networks` 需要定位权限：设置 → 隐私和
 **Q：不想让它常驻？**
 `install_task.ps1 -NoWatchdog` 重新注册，或者托盘右键「退出保活」+ `Stop-ScheduledTask -TaskName JIT-Campus-KeepAlive`。
 
-**Q：HTTP 重登到底能不能用？**
-在金科校园网上验证过。建议先跑一次 `run.bat --verify-http-login`（先在门户点注销）确认；
-如果不可用，把 `keepalive.relogin.enabled` 改成 `false`，退化成纯心跳保活。
+**Q：重连会不会弹浏览器窗口？**
+会。金科门户的登录页是 JS 渲染的，原始 HTML 里没有 `<form>`，纯 HTTP 提交不了
+（2026-11-13 实测 12 次全部失败），所以默认 `relogin.engine = "auto"`：
+先试 HTTP，失败立刻弹出程序自己的浏览器窗口自动登录。窗口会复用，不会越开越多。
+想只走 HTTP（会一直失败）改成 `"http"`；想跳过 HTTP 直接弹窗改成 `"browser"`。
 
 ---
 
@@ -263,7 +268,7 @@ python tests\test_keepalive.py
 ```
 
 `tests/test_keepalive.py` 会起一个本地 mock 门户（`tests/mock_portal.py`），
-真实地走一遍"未登录 → 静默重登 → 被踢 → 再登回去"的完整流程。
+真实地走一遍"未登录 → 自动重登 → 被踢 → 再登回去"的完整流程。
 
 可选依赖：只有 `browser.engine = "selenium"` 时才需要 Selenium。缺了不影响主路径，
 要装的话：
@@ -284,7 +289,7 @@ jitauth/
   browser.py      程序自己的浏览器窗口（CDP / Selenium）
   cdp.py          极简 Chrome DevTools 协议客户端
   wifi.py         WiFi 检测 / 连接 / 开关
-  keepalive.py    保活引擎：探针、状态机、静默重登、退避限流
+  keepalive.py    保活引擎：探针、状态机、两级重登、退避限流
   tray.py         托盘图标（纯 ctypes）
   logging_setup.py 日志（按天轮转）
 tests/            离线测试 + mock 门户

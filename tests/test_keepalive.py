@@ -61,6 +61,10 @@ class FakeNetwork:
         self.login_ok = True
         self.login_message = "认证成功"
         self.login_calls = 0
+        # 浏览器重登（第二级兜底）
+        self.browser_ok = False
+        self.browser_message = "浏览器重登未成功"
+        self.browser_calls = 0
         self.probe_calls = 0
         self.wifi_calls = 0
         self.notifications: list[tuple[str, str, str]] = []
@@ -86,6 +90,13 @@ class FakeNetwork:
                 # 登录成功但下一轮又掉（模拟被手机抢占）
                 self._flap_armed = True
         return self.login_ok, self.login_message
+
+    def browser(self) -> tuple[bool, str]:
+        """模拟"弹出浏览器窗口自动登录"。"""
+        self.browser_calls += 1
+        if self.browser_ok:
+            self.online = True
+        return self.browser_ok, self.browser_message
 
     def wifi(self) -> tuple[bool, str]:
         self.wifi_calls += 1
@@ -114,6 +125,7 @@ def make_engine(net: FakeNetwork, clock: FakeClock, **overrides) -> keepalive.Ke
         probe_fn=net.probe,
         portal_fn=net.portal_state,
         login_fn=net.login,
+        browser_fn=net.browser,
         wifi_fn=net.wifi,
         notify_fn=lambda level, title, text: net.notifications.append((level, title, text)),
         now_fn=clock.now,
@@ -162,6 +174,14 @@ def test_config() -> None:
     check("空退避序列有兜底", s2.backoff_seconds == [30.0, 120.0, 300.0, 900.0],
           str(s2.backoff_seconds))
     check("max_per_hour 下限为 1", s2.max_per_hour == 1, str(s2.max_per_hour))
+
+    check("默认重登方式 auto", settings.relogin_engine == "auto", settings.relogin_engine)
+    check("非法 engine 回落到 auto",
+          keepalive.Settings.from_cfg(
+              {"keepalive": {"relogin": {"engine": "whatever"}}}).relogin_engine == "auto")
+    check("engine=browser 能识别",
+          keepalive.Settings.from_cfg(
+              {"keepalive": {"relogin": {"engine": "BROWSER"}}}).relogin_engine == "browser")
 
     eps = keepalive.build_endpoints({})
     check("默认三个探针", len(eps) == 3, str([e.name for e in eps]))
@@ -288,6 +308,50 @@ def test_state_machine() -> None:
         clock.advance(60)
     check("门户在线 → 不重登", net.login_calls == 0, str(net.login_calls))
     check("状态标记为 DEGRADED", engine.state == keepalive.DEGRADED, engine.state)
+
+    print("\n== 门户登录页没有表单：HTTP 失败后自动弹浏览器 ==")
+    net = FakeNetwork()
+    clock = FakeClock()
+    engine = make_engine(net, clock)
+    net.login_ok = False
+    net.login_message = "门户页面里没有找到登录表单（可能需要浏览器渲染）"
+    net.browser_ok = True
+    net.browser_message = "页面出现成功/已在线提示"
+    for i in range(3):
+        engine.tick()
+        clock.advance(60)
+    check("HTTP 失败后调用了浏览器", net.browser_calls == 1, str(net.browser_calls))
+    check("浏览器成功后恢复 ONLINE", engine.state == keepalive.ONLINE, engine.state)
+    check("记一次成功重登", engine.relogin_success_total == 1, str(engine.relogin_success_total))
+
+    print("\n== engine=browser：直接弹窗，不走 HTTP ==")
+    net = FakeNetwork()
+    clock = FakeClock()
+    engine = make_engine(net, clock, relogin_engine="browser")
+    net.login_ok = False
+    net.browser_ok = True
+    for i in range(3):
+        engine.tick()
+        clock.advance(60)
+    check("没有尝试 HTTP", net.login_calls == 0, str(net.login_calls))
+    check("直接用了浏览器", net.browser_calls == 1, str(net.browser_calls))
+    check("恢复 ONLINE", engine.state == keepalive.ONLINE, engine.state)
+
+    print("\n== 两级都失败才退避 ==")
+    net = FakeNetwork()
+    clock = FakeClock()
+    engine = make_engine(net, clock)
+    net.login_ok = False
+    net.browser_ok = False
+    for i in range(2):
+        engine.tick()
+        clock.advance(60)
+    engine.tick()  # 第 3 次达到阈值：两级都试，都失败 → 排退避
+    check("HTTP 和浏览器都试过", net.login_calls == 1 and net.browser_calls == 1,
+          f"http={net.login_calls} browser={net.browser_calls}")
+    check("进入 DEGRADED 且已排退避",
+          engine.state == keepalive.DEGRADED and engine.next_attempt_at > clock.now(),
+          f"{engine.state} / {engine.next_attempt_at} vs {clock.now()}")
 
     print("\n== 门户打不开：不重登，先修 WiFi ==")
     net = FakeNetwork()

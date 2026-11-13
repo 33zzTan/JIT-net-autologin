@@ -85,8 +85,9 @@
     ],
 
     "relogin": {
-      "_comment": "断线后默认只走纯 HTTP 静默重登（不开窗口）；max_per_hour=每小时最多重登几次；backoff_seconds=失败后的退避序列；fatal_hold=账号密码错误时暂停多久（秒）",
+      "_comment": "断线后怎么重登。engine=auto：先试纯 HTTP，失败立刻弹出浏览器窗口自动填表登录（金科门户登录页是 JS 渲染的，HTTP 提交不了，实际会走浏览器）；engine=http 只走 HTTP；engine=browser 直接弹窗。max_per_hour=每小时最多重登几次；backoff_seconds=失败后的退避序列；fatal_hold=账号密码错误时暂停多久（秒）",
       "enabled": true,
+      "engine": "auto",
       "max_per_hour": 12,
       "backoff_seconds": [30, 120, 300, 900],
       "verify_timeout": 25,
