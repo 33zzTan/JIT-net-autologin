@@ -79,15 +79,15 @@ DEFAULTS: dict = {
     # ---- 保活 / 断线自动重连（登录之后一直盯着网络）----
     "keepalive": {
         "enabled": True,
-        "check_interval": 60,          # 巡检间隔（秒），本身也是一次心跳流量
+        "check_interval": 20,          # 巡检间隔（秒），本身也是一次心跳流量
         "heartbeat_interval": 240,     # 额外心跳（巡检间隔比它长时才用得上）
         "probe_timeout": 4,
-        "fail_threshold": 3,           # 连续几次探针失败才判定断线
+        "fail_threshold": 1,           # 连续几轮探针失败算断线（1=一轮；还有门户二次确认兜底）
         "confirm_portal": True,        # 判定断线前先看门户页
         "on_sleep_wake": True,         # 休眠唤醒后立即复查
         "sleep_jump_threshold": 90,
         "wifi_reconnect": True,        # 断线时先尝试重连 WiFi
-        "portal_retry_after": 300,     # 门户打不开/说不清时，隔多久再看
+        "portal_retry_after": 60,      # 门户打不开/说不清时，隔多久再看
         "notify": True,                # 系统气泡通知
         "log_summary_minutes": 30,
         "probes": [

@@ -66,15 +66,15 @@
   "keepalive": {
     "_comment": "=== 登录之后的保活与断线自动重连 === check_interval=多久探一次（本身就是心跳流量）；fail_threshold=连续几次不通才判定掉线；relogin.enabled=false 就是严格纯心跳模式",
     "enabled": true,
-    "check_interval": 60,
+    "check_interval": 20,
     "heartbeat_interval": 240,
     "probe_timeout": 4,
-    "fail_threshold": 3,
+    "fail_threshold": 1,
     "confirm_portal": true,
     "on_sleep_wake": true,
     "sleep_jump_threshold": 90,
     "wifi_reconnect": true,
-    "portal_retry_after": 300,
+    "portal_retry_after": 60,
     "notify": true,
     "log_summary_minutes": 30,
 

@@ -155,8 +155,10 @@ def test_config() -> None:
     print("\n== 配置解析 ==")
     cfg = config_mod.load()
     settings = keepalive.Settings.from_cfg(cfg)
-    check("默认巡检间隔 60 秒", settings.check_interval == 60, str(settings.check_interval))
-    check("默认连续 3 次失败判定断线", settings.fail_threshold == 3, str(settings.fail_threshold))
+    check("默认巡检间隔 20 秒（快速模式）", settings.check_interval == 20,
+          str(settings.check_interval))
+    check("默认 1 轮失败就判定断线", settings.fail_threshold == 1,
+          str(settings.fail_threshold))
     check("默认开启静默重登", settings.relogin_enabled is True)
     check("默认退避序列", settings.backoff_seconds == [30.0, 120.0, 300.0, 900.0],
           str(settings.backoff_seconds))
@@ -168,7 +170,7 @@ def test_config() -> None:
         "relogin": {"enabled": "no", "backoff_seconds": [], "max_per_hour": 0},
     }}
     s2 = keepalive.Settings.from_cfg(weird)
-    check("坏值回落到默认间隔", s2.check_interval == 60.0, str(s2.check_interval))
+    check("坏值回落到默认间隔", s2.check_interval == 20.0, str(s2.check_interval))
     check("阈值下限为 1", s2.fail_threshold == 1, str(s2.fail_threshold))
     check("字符串 false 能识别", s2.enabled is False and s2.relogin_enabled is False)
     check("空退避序列有兜底", s2.backoff_seconds == [30.0, 120.0, 300.0, 900.0],

@@ -136,10 +136,10 @@ class Settings:
 
         return cls(
             enabled=boolean(raw, "enabled", True),
-            check_interval=max(10.0, num(raw, "check_interval", 60)),
+            check_interval=max(10.0, num(raw, "check_interval", 20)),
             heartbeat_interval=max(0.0, num(raw, "heartbeat_interval", 240)),
             probe_timeout=max(1.0, num(raw, "probe_timeout", 4)),
-            fail_threshold=max(1, int(num(raw, "fail_threshold", 3))),
+            fail_threshold=max(1, int(num(raw, "fail_threshold", 1))),
             confirm_portal=boolean(raw, "confirm_portal", True),
             on_sleep_wake=boolean(raw, "on_sleep_wake", True),
             sleep_jump_threshold=max(10.0, num(raw, "sleep_jump_threshold", 90)),
@@ -153,7 +153,7 @@ class Settings:
             flap_threshold=max(2, int(num(rel, "flap_threshold", 3))),
             flap_hold=max(60.0, num(rel, "flap_hold", 1800)),
             fatal_hold=max(60.0, num(rel, "fatal_hold", 21600)),
-            portal_retry_after=max(30.0, num(raw, "portal_retry_after", 300)),
+            portal_retry_after=max(30.0, num(raw, "portal_retry_after", 60)),
             notify=boolean(raw, "notify", True),
             log_summary_minutes=max(5.0, num(raw, "log_summary_minutes", 30)),
         )
